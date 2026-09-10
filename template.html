@@ -261,6 +261,8 @@
   <section class="tab" id="tab-games">
     <div class="filters">
       <select id="f-week"><option value="">All weeks</option></select>
+      <select id="f-day"><option value="">All days</option></select>
+      <button class="dropdown-btn" id="f-time-btn">Kickoff <span class="count" id="f-time-count"></span></button>
       <input type="search" id="f-team" placeholder="Search team name…">
     </div>
     <div id="gameList"></div>
@@ -276,6 +278,16 @@
     <div id="trackerList"></div>
   </section>
 </main>
+
+<div class="scrim" id="scrim"></div>
+<div class="dropdown-panel" id="f-time-panel">
+  <div class="actions">
+    <button id="time-all">Select all</button>
+    <button id="time-clear">Clear</button>
+  </div>
+  <div id="time-options"></div>
+  <button class="backdrop-close" data-close>Done</button>
+</div>
 
 <script>
 (function(){
@@ -845,6 +857,64 @@
   }
 
   // ---------- Games tab / filters ----------
+  // Date + Kickoff filters (added 2026-09-10, Carlos: "add the Date and Kickoff
+  // time filters the same as in the Match Day Dashboard") -- mirrors Match Day
+  // Board's Fixtures-tab f-day/f-time pattern exactly (same dropdown-panel CSS,
+  // already present in this file but unused until now), adapted to this
+  // dashboard's g.date/g.time fields instead of fx.date/fx.ts.
+  var timeSet = [];
+  var timeSelected = new Set();
+
+  function buildDayOptions(){
+    var days = Array.from(new Set(GAMES.map(function(g){ return g.date; }))).filter(Boolean).sort();
+    var sel = document.getElementById('f-day');
+    days.forEach(function(d){
+      var o = document.createElement('option'); o.value = d; o.textContent = fmtDate(d); sel.appendChild(o);
+    });
+  }
+
+  function buildTimeOptions(){
+    timeSet = Array.from(new Set(GAMES.map(function(g){ return fmtTime(g.time); }))).filter(Boolean).sort(function(a,b){
+      // sort chronologically by parsing back to minutes-ish (same trick as Match Day Board's f-time)
+      function toMinutes(t){
+        var m = t.match(/(\d+):(\d+)\s*([AP]M)/i);
+        if(!m) return 0;
+        var h = parseInt(m[1],10)%12; if(/pm/i.test(m[3])) h+=12;
+        return h*60+parseInt(m[2],10);
+      }
+      return toMinutes(a)-toMinutes(b);
+    });
+    timeSelected = new Set(timeSet);
+    renderTimeOptions();
+    updateTimeCount();
+  }
+  function renderTimeOptions(){
+    var box = document.getElementById('time-options');
+    box.innerHTML = timeSet.map(function(t){
+      var checked = timeSelected.has(t) ? 'checked' : '';
+      return '<label><input type="checkbox" value="'+esc(t)+'" '+checked+' class="time-cb"> '+esc(t)+'</label>';
+    }).join('');
+    box.querySelectorAll('.time-cb').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        if (cb.checked) timeSelected.add(cb.value); else timeSelected.delete(cb.value);
+        updateTimeCount(); renderGames();
+      });
+    });
+  }
+  function updateTimeCount(){
+    var tc = document.getElementById('f-time-count');
+    tc.textContent = (timeSelected.size && timeSelected.size < timeSet.length) ? '('+timeSelected.size+')' : '';
+  }
+  function openPanel(panel){
+    document.getElementById('scrim').classList.add('open');
+    panel.classList.add('open');
+    panel.style.top = '90px';
+  }
+  function closeAllPanels(){
+    document.querySelectorAll('.dropdown-panel').forEach(function(p){ p.classList.remove('open'); });
+    document.getElementById('scrim').classList.remove('open');
+  }
+
   function weekSortKey(g){
     return {week: g.week, weekNumber: g.weekNumber, date: g.date};
   }
@@ -873,6 +943,9 @@
   function passesGameFilters(g){
     var week = document.getElementById('f-week').value;
     if (week && g.week !== week) return false;
+    var day = document.getElementById('f-day').value;
+    if (day && g.date !== day) return false;
+    if (timeSet.length && timeSelected.size < timeSet.length && !timeSelected.has(fmtTime(g.time))) return false;
     var teamQ = document.getElementById('f-team').value.trim().toLowerCase();
     if (teamQ) {
       var home = g.home||{}, away = g.away||{};
@@ -913,6 +986,12 @@
   });
 
   document.getElementById('f-week').addEventListener('change', renderGames);
+  document.getElementById('f-day').addEventListener('change', renderGames);
+  document.getElementById('f-time-btn').addEventListener('click', function(){ openPanel(document.getElementById('f-time-panel')); });
+  document.getElementById('scrim').addEventListener('click', closeAllPanels);
+  document.querySelectorAll('[data-close]').forEach(function(b){ b.addEventListener('click', closeAllPanels); });
+  document.getElementById('time-all').addEventListener('click', function(){ timeSelected = new Set(timeSet); renderTimeOptions(); updateTimeCount(); renderGames(); });
+  document.getElementById('time-clear').addEventListener('click', function(){ timeSelected = new Set(); renderTimeOptions(); updateTimeCount(); renderGames(); });
   document.getElementById('f-team').addEventListener('input', renderGames);
 
   // ---------- tabs ----------
@@ -1250,6 +1329,8 @@
   var gen = DATA.generatedAt ? new Date(DATA.generatedAt) : null;
   document.getElementById('genMeta').textContent = gen ? ('Updated ' + gen.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})) : '';
   buildWeekOptions();
+  buildDayOptions();
+  buildTimeOptions();
   renderTop();
   renderAts();
   renderGames();
