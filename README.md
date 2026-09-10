@@ -14,14 +14,24 @@ publish time.
 - `index.html` -- generated. Do not hand-edit; it's overwritten on every
   push-script run. Not committed until the first real run produces it.
 
-## v1 scope: core only, no Top Edges "7pt Teasers" tab
+## v1 scope: no Top Edges "7pt Teasers" tab
 
-`ncaa.v_future_games_model` is deliberately core-only right now (per Carlos's
-"core first" decision, 2026-09-09): moneyline, spread, game total, team
-totals. It has none of the NFL view's later additions -- no H2H, no
-injuries, no venue-split scoring, no recent form, no 7-point teaser -- so
-this dashboard doesn't surface any of those yet. Natural follow-ups once the
-NCAA view grows the same way the NFL one did, incrementally.
+`ncaa.v_future_games_model` started core-only (per Carlos's "core first"
+decision, 2026-09-09): moneyline, spread, game total, team totals. As of
+2026-09-10 (Carlos: "add the same cards as the NFL Tracker -- H2H data,
+Streaks and other stuff we have added" / "everything the NFL tracker has")
+it also carries H2H history, latest injury report, recent form/streaks, and
+home/away venue-split scoring, mirroring the NFL view's own additions --
+see `ncaa_modeling_view.sql`'s §3b/3c/3d and the `h2h_games`/`h2h` CTEs.
+There's still no 7-point teaser tab.
+
+**Injuries caveat, unconfirmed as of this writing:** unlike every other NCAA
+data source in this pipeline, whether api-sports actually returns real
+roster/injury data for *college* teams (vs. an empty response) hasn't been
+checked -- the sandbox that built this has no network access to
+api-sports.io. Run `run/ncaa_06b_players_roster.py` then
+`run/ncaa_08b_injuries.py` and check the printed row counts before trusting
+`ncaa.injuries` has anything real in it.
 
 Two real modeling differences from the NFL dashboard, not oversights:
 
@@ -61,9 +71,14 @@ Two real modeling differences from the NFL dashboard, not oversights:
 
 From `nfl-ingest/`, after your usual NCAA data-refresh scripts
 (`run/ncaa_04_odds.py`, `run/ncaa_05_power_ratings.py`) so the view has
-fresh lines:
+fresh lines, and after applying `ncaa_schema.sql` + `ncaa_modeling_view.sql`
+to your database (one-time, and again any time either file changes):
 
 ```
+psql -f ncaa_schema.sql <your NCAA db connection args>
+psql -f ncaa_modeling_view.sql <your NCAA db connection args>
+python run/ncaa_06b_players_roster.py   # roster -- needed for injuries' position filter
+python run/ncaa_08b_injuries.py         # on-demand, only teams with an upcoming game
 python run/ncaa_07_push_dashboard.py
 ```
 
