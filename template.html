@@ -113,6 +113,37 @@
   .expected-box{background:var(--chip-bg); border-radius:10px; padding:9px 10px; margin-bottom:12px; font-size:12px;}
   .expected-box .row1{display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px; color:var(--dim);}
   .expected-box .row1 b{color:var(--text);}
+  .h2h-box{background:var(--chip-bg); border-radius:10px; padding:9px 10px; margin-bottom:12px; font-size:12px;}
+  .h2h-box h4{font-size:12px; margin:0 0 6px 0; display:flex; justify-content:space-between; align-items:baseline; gap:8px;}
+  .h2h-box h4 .h2h-meta{font-weight:400; color:var(--dim); font-size:11px; white-space:nowrap;}
+  .h2h-line{display:flex; justify-content:space-between; gap:8px; padding:2px 0; color:var(--dim);}
+  .h2h-line b{color:var(--text);}
+  .h2h-n{color:var(--dim); font-size:10.5px; margin-left:4px;}
+  .h2h-results{margin-top:6px; padding-top:6px; border-top:1px solid var(--border);}
+  .h2h-result{display:flex; justify-content:space-between; gap:8px; padding:1px 0; color:var(--dim); font-size:11.5px;}
+  .h2h-result span:last-child{color:var(--text);}
+  .h2h-empty{color:var(--dim); font-size:12px;}
+  .injury-col-label{font-size:11px; font-weight:600; color:var(--dim); text-transform:uppercase; letter-spacing:.3px; margin-bottom:2px;}
+  .injury-col-label:not(:first-child){margin-top:8px;}
+  .injury-row{display:flex; justify-content:space-between; gap:8px; padding:2px 0; font-size:12px;}
+  .injury-name{color:var(--text);}
+  .injury-pos{color:var(--dim); font-size:10.5px;}
+  .injury-status{font-weight:600; white-space:nowrap;}
+  .injury-status.out{color:var(--red);}
+  .injury-status.doubtful, .injury-status.questionable{color:var(--amber);}
+  .injury-empty{color:var(--dim); font-size:12px;}
+  .form-row{display:flex; justify-content:space-between; gap:8px; padding:1px 0; font-size:12px; color:var(--dim);}
+  .form-row b{color:var(--text); font-weight:600;}
+  .form-streak{font-weight:700; margin-left:3px;}
+  .form-streak.w{color:var(--green);}
+  .form-streak.l{color:var(--red);}
+  .form-chips{display:flex; gap:4px; margin:4px 0 2px 0;}
+  .form-chip{display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; border-radius:4px; font-size:10px; font-weight:700;}
+  .form-chip.w{background:var(--green-bg); color:var(--green);}
+  .form-chip.l{background:var(--red-bg); color:var(--red);}
+  .form-chip.t{background:var(--chip-bg); color:var(--dim);}
+  .form-empty{color:var(--dim); font-size:12px;}
+
   .market-row{
     display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:8px 0; border-bottom:1px solid var(--border);
   }
@@ -627,22 +658,33 @@
   function snapshotHtml(g){
     var ratings = g.ratings||{}, scoring = g.scoring||{}, expected = g.expected||{};
     var home = g.home||{}, away = g.away||{};
-    // NCAA's core view (Carlos, "core first") has no venue-split scoring (no
-    // homeAvgScoredAtHome/awayAvgScoredOnRoad equivalents) and no game-log Elo --
-    // just a single team-strength rating (SP+) as of a given date, plus season-wide
-    // avg scored/allowed. Simplified from the NFL version's col() accordingly.
-    function col(team, rating, asOf, avgScored, avgAllowed, logo){
+    // venueLabel/venueScored/venueAllowed/venueGames restored 2026-09-10 (Carlos:
+    // "add the same cards as the NFL Tracker") -- the home team's scoring
+    // specifically AT HOME, or the away team's specifically ON THE ROAD, distinct
+    // from the season-wide avgScored/avgAllowed above. Renders nothing when there's
+    // no venue data yet, same "don't show what you don't have" approach as the
+    // rest of this dashboard. Rating is SP+ (points-scale), not Elo -- see
+    // ncaa_07_push_dashboard.py's header comment.
+    function col(team, rating, asOf, avgScored, avgAllowed, logo, venueLabel, venueScored, venueAllowed, venueGames){
+      var venueLine = '';
+      if (isNum(venueScored) || isNum(venueAllowed)) {
+        venueLine = '<div class="stat">'+esc(venueLabel)+' <span><b>'+fmtNum(venueScored,1)+'</b> scored / <b>'+fmtNum(venueAllowed,1)+'</b> allowed'+
+          (isNum(venueGames)?' <span class="h2h-n">(N='+venueGames+')</span>':'')+'</span></div>';
+      }
       return '<div class="snapshot-col">'+
         '<h4>'+badge(teamLabel(team), logo, 'sm')+' '+esc(team.name||teamLabel(team))+'</h4>'+
         '<div class="stat">SP+ <b>'+(isNum(rating)?fmtNum(rating,1):'–')+'</b></div>'+
         '<div class="stat">As of <b>'+(asOf?esc(fmtDate(asOf.slice(0,10))):'–')+'</b></div>'+
         '<div class="stat">Avg scored <b>'+fmtNum(avgScored,1)+'</b></div>'+
         '<div class="stat">Avg allowed <b>'+fmtNum(avgAllowed,1)+'</b></div>'+
+        venueLine+
       '</div>';
     }
     var grid = '<div class="snapshot-grid">'+
-      col(home, ratings.homeRating, ratings.homeAsOf, scoring.homeAvgScored, scoring.homeAvgAllowed, home.logo)+
-      col(away, ratings.awayRating, ratings.awayAsOf, scoring.awayAvgScored, scoring.awayAvgAllowed, away.logo)+
+      col(home, ratings.homeRating, ratings.homeAsOf, scoring.homeAvgScored, scoring.homeAvgAllowed, home.logo,
+          'At home', scoring.homeAvgScoredAtHome, scoring.homeAvgAllowedAtHome, scoring.homeVenueGamesPlayed)+
+      col(away, ratings.awayRating, ratings.awayAsOf, scoring.awayAvgScored, scoring.awayAvgAllowed, away.logo,
+          'On road', scoring.awayAvgScoredOnRoad, scoring.awayAvgAllowedOnRoad, scoring.awayVenueGamesPlayed)+
     '</div>';
     var hasExpected = isNum(expected.margin) || isNum(expected.total) || isNum(expected.teamHome) || isNum(expected.teamAway);
     var expectedHtml = '';
@@ -655,6 +697,121 @@
       '</div></div>';
     }
     return grid + expectedHtml;
+  }
+
+  // ---------- head-to-head box (restored 2026-09-10, Carlos: "add the same
+  // cards as the NFL Tracker") ----------
+  // g.h2h is always present in the payload (build_game_json always emits the key)
+  // but every field is null when the two teams have never met in ncaa.games'
+  // archive -- never fabricated, same "no data" convention as every other missing
+  // field on this dashboard. NCAA's usable history is 2022-2025 (api-sports has
+  // zero NCAA games for 2010-2021), so expect thinner H2H than the NFL dashboard's
+  // 2010-present archive -- currentVenueMeetings/reverseVenueMeetings are shown
+  // alongside every average for exactly that reason, an average here can rest on
+  // an N of 1, and Carlos sees the N and judges for himself rather than it being
+  // hidden or gated below some floor.
+  function h2hHtml(g){
+    var h2h = g.h2h || {};
+    var home = g.home||{}, away = g.away||{};
+    if (!isNum(h2h.meetings) || h2h.meetings <= 0) {
+      return '<div class="h2h-box"><h4>Head-to-Head</h4><div class="h2h-empty">No meetings on record (2022–present)</div></div>';
+    }
+    var lines = '';
+    if (h2h.currentVenueMeetings) {
+      lines += '<div class="h2h-line"><span>'+esc(teamLabel(home))+' hosting '+esc(teamLabel(away))+'</span>'+
+        '<span><b>'+fmtNum(h2h.homeAvgScoredHosting,1)+'</b>–<b>'+fmtNum(h2h.awayAvgScoredVisiting,1)+'</b> avg pts'+
+        '<span class="h2h-n">(N='+h2h.currentVenueMeetings+')</span></span></div>';
+    }
+    if (h2h.reverseVenueMeetings) {
+      lines += '<div class="h2h-line"><span>'+esc(teamLabel(away))+' hosting '+esc(teamLabel(home))+'</span>'+
+        '<span><b>'+fmtNum(h2h.awayAvgScoredHosting,1)+'</b>–<b>'+fmtNum(h2h.homeAvgScoredVisiting,1)+'</b> avg pts'+
+        '<span class="h2h-n">(N='+h2h.reverseVenueMeetings+')</span></span></div>';
+    }
+    var results = (h2h.results||[]).map(function(r){
+      var homeIsCurrentHome = r.homeTeamId === home.id;
+      var leftName = esc(homeIsCurrentHome ? teamLabel(home) : teamLabel(away));
+      var rightName = esc(homeIsCurrentHome ? teamLabel(away) : teamLabel(home));
+      return '<div class="h2h-result"><span>'+esc(fmtDate(r.date))+'</span>'+
+        '<span>'+leftName+' '+r.homeScore+' – '+r.awayScore+' '+rightName+'</span></div>';
+    }).join('');
+    var meta = h2h.meetings+' meeting'+(h2h.meetings===1?'':'s')+(h2h.lastMeetingDate?' · last '+esc(fmtDate(h2h.lastMeetingDate)):'');
+    return '<div class="h2h-box"><h4><span>Head-to-Head</span><span class="h2h-meta">'+meta+'</span></h4>'+
+      lines + (results?'<div class="h2h-results">'+results+'</div>':'') +
+    '</div>';
+  }
+
+  // ---------- injuries box (restored 2026-09-10, Carlos: "add the same cards as
+  // the NFL Tracker") ----------
+  // g.injuries is always present in the payload but injuries.home/injuries.away
+  // are null, not an empty list, when that team has no injuries pulled yet --
+  // run/ncaa_08b_injuries.py is manual/on-demand, not part of every pipeline run,
+  // so a null here means "not checked", shown as "No data", never rendered as
+  // "confirmed healthy". Key skill positions only (QB/RB/WR/TE) -- filtered
+  // server-side in ncaa_modeling_view.sql.
+  function injuryStatusClass(status){
+    var s = (status||'').toLowerCase();
+    if (s.indexOf('out') === 0 || s === 'ir' || s.indexOf('injured reserve') >= 0) return 'out';
+    if (s.indexOf('doubtful') === 0) return 'doubtful';
+    if (s.indexOf('questionable') === 0) return 'questionable';
+    return '';
+  }
+  function injuryListHtml(list){
+    if (!list || !list.length) return '<div class="injury-empty">No data</div>';
+    return list.map(function(p){
+      var cls = injuryStatusClass(p.status);
+      return '<div class="injury-row">'+
+        '<span class="injury-name">'+esc(p.playerName)+' <span class="injury-pos">'+esc(p.position)+'</span></span>'+
+        '<span class="injury-status'+(cls?' '+cls:'')+'">'+esc(p.status||'–')+'</span>'+
+      '</div>';
+    }).join('');
+  }
+  function injuriesHtml(g){
+    var inj = g.injuries||{};
+    var home = g.home||{}, away = g.away||{};
+    return '<div class="h2h-box">'+
+      '<h4><span>Injuries</span><span class="h2h-meta">QB/RB/WR/TE</span></h4>'+
+      '<div class="injury-col-label">'+esc(teamLabel(away))+'</div>'+
+      injuryListHtml(inj.away)+
+      '<div class="injury-col-label">'+esc(teamLabel(home))+'</div>'+
+      injuryListHtml(inj.home)+
+    '</div>';
+  }
+
+  // ---------- recent form box (restored 2026-09-10, Carlos: "add the same cards
+  // as the NFL Tracker") ----------
+  // g.form is always present but form.home/form.away are null field-by-field, not
+  // fabricated zeros, for a team with zero completed games -- same "never
+  // fabricate" convention as injuries above. recentGames comes most-recent-first
+  // from the backend; reversed here so the chip row reads oldest-to-newest
+  // left-to-right, ending at "now" on the right.
+  function formStreakLabel(result, length){
+    if (!result || !isNum(length) || length <= 0) return '';
+    return result + length;
+  }
+  function formRecordHtml(f){
+    if (!f || !isNum(f.gamesPlayed) || f.gamesPlayed <= 0) return '<div class="form-empty">No data</div>';
+    var record = f.wins + '-' + f.losses + (f.ties ? '-' + f.ties : '');
+    var streak = formStreakLabel(f.streakResult, f.streakLength);
+    var streakCls = f.streakResult === 'W' ? 'w' : (f.streakResult === 'L' ? 'l' : '');
+    var chips = (f.recentGames||[]).slice().reverse().map(function(rg){
+      var cls = rg.result === 'W' ? 'w' : (rg.result === 'L' ? 'l' : 't');
+      return '<span class="form-chip '+cls+'" title="'+esc(fmtDate(rg.date))+': '+rg.pointsScored+'-'+rg.pointsAllowed+'">'+esc(rg.result)+'</span>';
+    }).join('');
+    return '<div class="form-row"><span>Last '+f.gamesPlayed+': <b>'+esc(record)+'</b>'+
+        (streak?' <span class="form-streak '+streakCls+'">'+esc(streak)+'</span>':'')+'</span>'+
+      '<span>'+fmtNum(f.avgScored,1)+' / '+fmtNum(f.avgAllowed,1)+' avg</span></div>'+
+      '<div class="form-chips">'+chips+'</div>';
+  }
+  function formHtml(g){
+    var form = g.form||{};
+    var home = g.home||{}, away = g.away||{};
+    return '<div class="h2h-box">'+
+      '<h4><span>Recent Form</span><span class="h2h-meta">Last 5</span></h4>'+
+      '<div class="injury-col-label">'+esc(teamLabel(away))+'</div>'+
+      formRecordHtml(form.away)+
+      '<div class="injury-col-label">'+esc(teamLabel(home))+'</div>'+
+      formRecordHtml(form.home)+
+    '</div>';
   }
 
   function topEdgeTeaser(g){
@@ -679,6 +836,9 @@
       '</div>'+
       '<div class="expand" id="expand-'+esc(g.id)+'">'+
         snapshotHtml(g)+
+        h2hHtml(g)+
+        injuriesHtml(g)+
+        formHtml(g)+
         marketsHtml(g)+
       '</div>'+
     '</div>';
