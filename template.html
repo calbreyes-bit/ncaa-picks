@@ -153,6 +153,11 @@
   .market-row .rec{font-size:13px; font-weight:600;}
   .market-row .rec.pass{color:var(--dim); font-weight:500;}
   .market-row .edge-pct{color:var(--accent); font-size:12px; margin-left:4px; font-weight:700;}
+  /* 2026-09-11 addition: star/PASS badge next to a market row's rec (see
+     marketRowHtml's starHtml()) and the same star glyphs reused in the Best
+     Bet banner (.bb-line .stars). */
+  .stars{color:var(--accent); font-size:11px; margin-left:4px; letter-spacing:1px;}
+  .bb-line .stars{color:var(--accent); font-size:12px; letter-spacing:1px;}
   .mkt-price{
     display:inline-block; background:var(--chip-bg); color:var(--text); font-size:11.5px; font-weight:700;
     padding:1px 7px; border-radius:8px; margin-left:5px; font-variant-numeric:tabular-nums; white-space:nowrap;
@@ -608,12 +613,27 @@
   }
 
   // ---------- market row rendering for the Games tab expanded view ----------
-  function marketRowHtml(label, teamName, modelProb, marketProb, edge, lineHtml, gameId, marketKey, side, recLabel, price){
+  // 2026-09-11 addition: star/note render the same v1 scoring rule that
+  // drives the Best Bet banner (topEdgeTeaser below) -- 0 stars shows as
+  // "PASS" (reusing the .rec.pass styling that was already defined in CSS
+  // but never wired up), 1-5 stars shows as filled stars, both with the
+  // scoring reason as a hover title. star/note are undefined on the
+  // non-picked side of a market (each market recommends exactly one side,
+  // never both) and on any card from before this was deployed (older
+  // cached g.picks-less payloads) -- either way starHtml() below renders
+  // nothing, so this is a purely additive, backward-compatible change.
+  function starHtml(star, note){
+    if (star == null) return '';
+    if (star <= 0) return ' <span class="rec pass" title="'+esc(note||'Below the scoring floor')+'">PASS</span>';
+    return ' <span class="stars" title="'+esc(note||(star+' star'+(star===1?'':'s')))+'">'+'★'.repeat(star)+'</span>';
+  }
+
+  function marketRowHtml(label, teamName, modelProb, marketProb, edge, lineHtml, gameId, marketKey, side, recLabel, price, star, note){
     var labelHtml = '<div class="label">'+esc(label)+(teamName?'<br><span style="opacity:.6">'+esc(teamName)+'</span>':'')+'</div>';
     var priceStr = fmtAmerican(price);
     return '<div class="market-row">'+labelHtml+
       '<div class="body">'+
-        '<span class="rec">'+esc(recLabel)+'</span>'+(priceStr!=null?' <span class="mkt-price">'+esc(priceStr)+'</span>':'')+(isNum(edge)?' <span class="edge-pct">'+fmtEdgePct(edge)+'</span>':'')+
+        '<span class="rec">'+esc(recLabel)+'</span>'+(priceStr!=null?' <span class="mkt-price">'+esc(priceStr)+'</span>':'')+(isNum(edge)?' <span class="edge-pct">'+fmtEdgePct(edge)+'</span>':'')+starHtml(star, note)+
         '<div class="reason">Model '+fmtPct(modelProb)+' &middot; Market '+fmtPct(marketProb)+'</div>'+
         (lineHtml||'')+
       '</div>'+
@@ -626,6 +646,13 @@
     var home = g.home||{}, away = g.away||{};
     var ml = g.ml||{}, spread = g.spread||{}, total = g.total||{};
     var tt = g.teamTotal||{}, ttHome = tt.home||{}, ttAway = tt.away||{};
+    // g.picks.<market>.side names which single side (of the two rendered
+    // below) is the actual v1 recommendation -- the star/PASS badge only
+    // ever appears on that one row, never the mirror side, same "exactly
+    // one recommendation per market" rule ncaa_scoring_view.sql scores.
+    var picks = g.picks || {};
+    var mlPick = picks.ml || {}, spreadPick = picks.spread || {}, totalPick = picks.total || {};
+    var homeTtPick = picks.homeTt || {}, awayTtPick = picks.awayTt || {};
 
     // Gate every row on the *market* quantity being present (marketProb for ML, `line`
     // for spread/total/team-total below) rather than the model quantity alone -- a game
@@ -633,36 +660,50 @@
     // no market to compare it to or bet into) has no real "market row" to show, same as
     // spread/total/team-total already being gated on their own `line` field.
     if (isNum(ml.marketHome)) {
-      out += marketRowHtml('ML', teamLabel(home), ml.modelHome, ml.marketHome, ml.edgeHome, '', g.id, 'ml', 'home', teamLabel(home)+' ML', ml.priceHome);
+      out += marketRowHtml('ML', teamLabel(home), ml.modelHome, ml.marketHome, ml.edgeHome, '', g.id, 'ml', 'home', teamLabel(home)+' ML', ml.priceHome,
+        mlPick.side==='home'?mlPick.star:null, mlPick.side==='home'?mlPick.note:null);
     }
     if (isNum(ml.marketAway)) {
-      out += marketRowHtml('ML', teamLabel(away), ml.modelAway, ml.marketAway, ml.edgeAway, '', g.id, 'ml', 'away', teamLabel(away)+' ML', ml.priceAway);
+      out += marketRowHtml('ML', teamLabel(away), ml.modelAway, ml.marketAway, ml.edgeAway, '', g.id, 'ml', 'away', teamLabel(away)+' ML', ml.priceAway,
+        mlPick.side==='away'?mlPick.star:null, mlPick.side==='away'?mlPick.note:null);
     }
     if (isNum(spread.line)) {
       var lm = lineMoveHtml(spread.line, spread.openingLine);
       if (isNum(spread.modelHomeCover) || isNum(spread.marketHomeCover) || isNum(spread.edgeHome)) {
-        out += marketRowHtml('Spread', teamLabel(home)+' '+fmtSignedLine(spread.line), spread.modelHomeCover, spread.marketHomeCover, spread.edgeHome, lm, g.id, 'spread', 'home', teamLabel(home)+' '+fmtSignedLine(spread.line), spread.priceHome);
+        out += marketRowHtml('Spread', teamLabel(home)+' '+fmtSignedLine(spread.line), spread.modelHomeCover, spread.marketHomeCover, spread.edgeHome, lm, g.id, 'spread', 'home', teamLabel(home)+' '+fmtSignedLine(spread.line), spread.priceHome,
+          spreadPick.side==='home'?spreadPick.star:null, spreadPick.side==='home'?spreadPick.note:null);
       }
       if (isNum(spread.modelAwayCover) || isNum(spread.marketAwayCover)) {
         var edgeAway = isNum(spread.edgeHome) ? -spread.edgeHome : null;
-        out += marketRowHtml('Spread', teamLabel(away)+' '+fmtSignedLine(-spread.line), spread.modelAwayCover, spread.marketAwayCover, edgeAway, lm, g.id, 'spread', 'away', teamLabel(away)+' '+fmtSignedLine(-spread.line), spread.priceAway);
+        out += marketRowHtml('Spread', teamLabel(away)+' '+fmtSignedLine(-spread.line), spread.modelAwayCover, spread.marketAwayCover, edgeAway, lm, g.id, 'spread', 'away', teamLabel(away)+' '+fmtSignedLine(-spread.line), spread.priceAway,
+          spreadPick.side==='away'?spreadPick.star:null, spreadPick.side==='away'?spreadPick.note:null);
       }
     }
     if (isNum(total.line)) {
       var lmT = lineMoveHtml(total.line, total.openingLine);
       if (isNum(total.modelOver) || isNum(total.marketOver) || isNum(total.edgeOver)) {
-        out += marketRowHtml('Total', 'Over '+fmtLine(total.line), total.modelOver, total.marketOver, total.edgeOver, lmT, g.id, 'total', 'over', 'Over '+fmtLine(total.line), total.priceOver);
+        out += marketRowHtml('Total', 'Over '+fmtLine(total.line), total.modelOver, total.marketOver, total.edgeOver, lmT, g.id, 'total', 'over', 'Over '+fmtLine(total.line), total.priceOver,
+          totalPick.side==='over'?totalPick.star:null, totalPick.side==='over'?totalPick.note:null);
       }
       if (isNum(total.modelUnder) || isNum(total.marketUnder)) {
         var edgeUnder = isNum(total.edgeOver) ? -total.edgeOver : null;
-        out += marketRowHtml('Total', 'Under '+fmtLine(total.line), total.modelUnder, total.marketUnder, edgeUnder, lmT, g.id, 'total', 'under', 'Under '+fmtLine(total.line), total.priceUnder);
+        out += marketRowHtml('Total', 'Under '+fmtLine(total.line), total.modelUnder, total.marketUnder, edgeUnder, lmT, g.id, 'total', 'under', 'Under '+fmtLine(total.line), total.priceUnder,
+          totalPick.side==='under'?totalPick.star:null, totalPick.side==='under'?totalPick.note:null);
       }
     }
+    // TT rows: only the Over side is ever rendered here (a pre-existing gap --
+    // the Games tab never had an Under row for team totals, unlike the game
+    // Total market above). So the star badge only shows when the v1
+    // recommendation actually landed on Over; a TT Under pick still counts
+    // correctly for Best Bet/PASS purposes, it just has no row to attach a
+    // badge to in this view yet.
     if (isNum(ttHome.line) && (isNum(ttHome.modelOver) || isNum(ttHome.marketOver) || isNum(ttHome.edgeOver))) {
-      out += marketRowHtml('TT '+teamLabel(home), 'Over '+fmtLine(ttHome.line), ttHome.modelOver, ttHome.marketOver, ttHome.edgeOver, '', g.id, 'tt_home', 'over', teamLabel(home)+' TT Over '+fmtLine(ttHome.line), ttHome.priceOver);
+      out += marketRowHtml('TT '+teamLabel(home), 'Over '+fmtLine(ttHome.line), ttHome.modelOver, ttHome.marketOver, ttHome.edgeOver, '', g.id, 'tt_home', 'over', teamLabel(home)+' TT Over '+fmtLine(ttHome.line), ttHome.priceOver,
+        homeTtPick.side==='over'?homeTtPick.star:null, homeTtPick.side==='over'?homeTtPick.note:null);
     }
     if (isNum(ttAway.line) && (isNum(ttAway.modelOver) || isNum(ttAway.marketOver) || isNum(ttAway.edgeOver))) {
-      out += marketRowHtml('TT '+teamLabel(away), 'Over '+fmtLine(ttAway.line), ttAway.modelOver, ttAway.marketOver, ttAway.edgeOver, '', g.id, 'tt_away', 'over', teamLabel(away)+' TT Over '+fmtLine(ttAway.line), ttAway.priceOver);
+      out += marketRowHtml('TT '+teamLabel(away), 'Over '+fmtLine(ttAway.line), ttAway.modelOver, ttAway.marketOver, ttAway.edgeOver, '', g.id, 'tt_away', 'over', teamLabel(away)+' TT Over '+fmtLine(ttAway.line), ttAway.priceOver,
+        awayTtPick.side==='over'?awayTtPick.star:null, awayTtPick.side==='over'?awayTtPick.note:null);
     }
     return out;
   }
@@ -826,12 +867,31 @@
     '</div>';
   }
 
+  // 2026-09-11 rewrite: this used to sort computeEdgeEntries() by raw |edge|
+  // and show whichever won -- no floor (a thin-sample N=1 edge could lead
+  // the board) and a live tie-break bug (home ML and away ML edges are
+  // near-mirror images, so JS's stable sort kept the home side on a tie
+  // regardless of which side actually had the positive edge -- confirmed
+  // live on this exact card shape: Rutgers @ Boston College banner'd
+  // "Boston College ML -12.1% edge" when the real pick was Rutgers ML at
+  // +12.1%). Best Bet now comes from the server (g.picks.bestBet, computed
+  // by ncaa.v_future_games_scored -- see ncaa_scoring_view.sql for the full
+  // v1 scoring rule), which already fixes both problems: only positive-edge
+  // sides are ever candidates, and a sample-size cap knocks a thin-data
+  // edge down instead of letting it win. This function's only job now is
+  // to find that market/side's already-correctly-formatted label (from
+  // computeEdgeEntries, so the label text never drifts out of sync with
+  // the rest of the card) and render it, or show Skip when every market
+  // PASSed.
   function topEdgeTeaser(g){
+    var best = (g.picks || {}).bestBet;
+    if (!best) return '<div class="bb-line pass">Skip — no picks clear the bar</div>';
     var entries = computeEdgeEntries(g);
-    if (!entries.length) return '<div class="bb-line pass">No edges available</div>';
-    entries.sort(function(a,b){ return Math.abs(b.edge)-Math.abs(a.edge); });
-    var top = entries[0];
-    return '<div class="bb-line"><span>'+esc(top.label)+'</span><span class="edge-pct">'+fmtEdgePct(top.edge)+' edge</span></div>';
+    var match = entries.filter(function(e){ return e.marketKey === best.market && e.side === best.side; })[0];
+    if (!match) return '<div class="bb-line pass">Skip — no picks clear the bar</div>';
+    return '<div class="bb-line"><span>'+esc(match.label)+'</span>'+
+      '<span class="stars" title="'+best.star+' star'+(best.star===1?'':'s')+'">'+'★'.repeat(best.star)+'</span>'+
+      '<span class="edge-pct">'+fmtEdgePct(best.edge)+' edge</span></div>';
   }
 
   function cardHtml(g){
